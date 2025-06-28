@@ -28,8 +28,8 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 
-echo "Running toolfront with uvx..."
-exec uvx --python python3.11 'toolfront[all]' "$DATABASE_URL" --transport sse --host 0.0.0.0 --port "${PORT:-10000}"
+echo "Starting toolfront..."
+exec uvx --python python3.11 'toolfront[all]' "$DATABASE_URL" --transport sse
 EOF
 
 RUN chmod +x /app/start.sh
