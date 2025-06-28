@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 ENV VIRTUAL_ENV=/app/venv
 RUN python -m venv $VIRTUAL_ENV && chown -R appuser:appgroup $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
+RUN pip install uv
 # Copy project files and set ownership
 COPY --chown=appuser:appgroup pyproject.toml ./
 COPY --chown=appuser:appgroup src/ src/
@@ -42,5 +42,5 @@ echo "Starting ToolFront MCP server with args: $@"
 exec toolfront "$@"
 EOF
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/app/start.sh"]
 CMD []
