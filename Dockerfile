@@ -1,46 +1,28 @@
-# ToolFront MCP Server Docker Image
-FROM python:3.11.11-slim
+FROM python:3.11-slim
 
-# Create a non-root user and group
-RUN groupadd -r appgroup && useradd --no-log-init -r -m -g appgroup appuser
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory for the application
+# Install uv
+RUN pip install uv
+
+# Set working directory
 WORKDIR /app
 
-# Give appuser ownership of the WORKDIR
-RUN chown appuser:appgroup /app
+# Set environment variables
+ENV PORT=10000
 
-# Install system dependencies and uv (as root, before switching user)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv==0.5.2
-
-# Create virtual environment, initially as root, then chown to appuser
-ENV VIRTUAL_ENV=/app/venv
-RUN python -m venv $VIRTUAL_ENV && chown -R appuser:appgroup $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN pip install uv
-# Copy project files and set ownership
-COPY --chown=appuser:appgroup pyproject.toml ./
-COPY --chown=appuser:appgroup src/ src/
-COPY --chown=appuser:appgroup README.md ./
-
-# Switch to non-root user
-USER appuser
-
-# Install Python dependencies using uv in the virtual environment
-RUN uv pip install --no-cache .[all]
-
-# Entrypoint script
-COPY --chmod=755 --chown=appuser:appgroup <<'EOF' /app/entrypoint.sh
-#!/bin/sh
-set -e
-
-echo "Starting ToolFront MCP server with args: $@"
-exec toolfront "$@"
+# Copy a simple startup script
+COPY <<'EOF' /app/start.sh
+#!/bin/bash
+exec uvx toolfront[all] "$DATABASE_URL" --transport sse --host 0.0.0.0 --port "$PORT"
 EOF
 
-ENTRYPOINT ["/app/start.sh"]
-CMD []
+RUN chmod +x /app/start.sh
+
+EXPOSE 10000
+
+CMD ["/app/start.sh"]
