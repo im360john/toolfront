@@ -6,19 +6,29 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install uv
-
-# Set working directory
 WORKDIR /app
 
-# Set environment variables
-ENV PORT=10000
+# Install toolfront directly with pip
+RUN pip install 'toolfront[all]'
 
-# Copy a simple startup script
+# Create startup script
 COPY <<'EOF' /app/start.sh
 #!/bin/bash
-exec uvx toolfront[all] "$DATABASE_URL" --transport sse --host 0.0.0.0 --port "$PORT"
+set -e
+
+echo "=== Debug Information ==="
+echo "Python version: $(python --version)"
+echo "DATABASE_URL: $DATABASE_URL"
+echo "PORT: $PORT"
+echo "=========================="
+
+if [ -z "$DATABASE_URL" ]; then
+    echo "ERROR: DATABASE_URL environment variable is not set"
+    exit 1
+fi
+
+echo "Starting toolfront..."
+exec python -m toolfront "$DATABASE_URL" --transport sse --host 0.0.0.0 --port "${PORT:-10000}"
 EOF
 
 RUN chmod +x /app/start.sh
