@@ -1,10 +1,13 @@
 FROM python:3.11-slim
 
-# Install system dependencies
+# Install system dependencies including ps and other utilities
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     socat \
+    procps \
+    netcat-openbsd \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -27,40 +30,65 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 
-# Start toolfront in background
+# Function to check if port is open
+check_port() {
+    local port=$1
+    local host=${2:-127.0.0.1}
+    timeout 1 bash -c "cat < /dev/null > /dev/tcp/$host/$port" 2>/dev/null
+}
+
+# Start toolfront in background and capture output
 echo "Starting toolfront on localhost:8000..."
-uvx --python python3.11 'toolfront[all]' "$DATABASE_URL" --transport sse &
+uvx --python python3.11 'toolfront[all]' "$DATABASE_URL" --transport sse > /tmp/toolfront.log 2>&1 &
 TOOLFRONT_PID=$!
 
-# Wait for toolfront to start
-echo "Waiting for toolfront to start..."
-sleep 10
+echo "Toolfront PID: $TOOLFRONT_PID"
 
-# Check if toolfront is running
-if ! kill -0 $TOOLFRONT_PID 2>/dev/null; then
-    echo "ERROR: toolfront failed to start"
+# Wait for toolfront to start with better checking
+echo "Waiting for toolfront to start..."
+for i in {1..30}; do
+    if check_port 8000; then
+        echo "Toolfront is responding on port 8000!"
+        break
+    fi
+    
+    # Check if process is still running
+    if ! kill -0 $TOOLFRONT_PID 2>/dev/null; then
+        echo "ERROR: toolfront process died"
+        echo "Toolfront logs:"
+        cat /tmp/toolfront.log
+        exit 1
+    fi
+    
+    echo "Attempt $i/30: waiting for toolfront..."
+    sleep 2
+done
+
+# Final check
+if ! check_port 8000; then
+    echo "ERROR: toolfront is not responding after 60 seconds"
+    echo "Process status:"
+    ps aux | grep -E "(toolfront|python)" || echo "No toolfront processes found"
+    echo "Toolfront logs:"
+    cat /tmp/toolfront.log
+    echo "Netstat output:"
+    netstat -tlnp 2>/dev/null | grep :8000 || echo "No process listening on port 8000"
     exit 1
 fi
 
-# Test if toolfront is listening
-echo "Testing toolfront connection..."
-timeout 5s bash -c 'while ! nc -z 127.0.0.1 8000; do sleep 1; done' || {
-    echo "WARNING: Could not connect to toolfront on localhost:8000"
-    echo "Toolfront logs:"
-    jobs -p | xargs -r ps -f
-}
-
+echo "✓ Toolfront is running and responding"
 echo "Starting reverse proxy on 0.0.0.0:${PORT:-8000}..."
 echo "Proxying 0.0.0.0:${PORT:-8000} -> 127.0.0.1:8000"
+
+# Test the proxy target first
+echo "Testing proxy target..."
+curl -s -I http://127.0.0.1:8000/ || echo "Warning: Could not get HTTP response from toolfront"
 
 # Start the reverse proxy
 exec socat TCP-LISTEN:${PORT:-8000},fork,bind=0.0.0.0,reuseaddr TCP:127.0.0.1:8000
 EOF
 
 RUN chmod +x /app/start.sh
-
-# Install netcat for testing
-RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 8000
 
