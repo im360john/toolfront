@@ -6,10 +6,10 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Install uv
+RUN pip install uv
 
-# Install toolfront directly with pip
-RUN pip install 'toolfront[all]'
+WORKDIR /app
 
 # Create startup script
 COPY <<'EOF' /app/start.sh
@@ -18,6 +18,7 @@ set -e
 
 echo "=== Debug Information ==="
 echo "Python version: $(python --version)"
+echo "UV version: $(uv --version)"
 echo "DATABASE_URL: $DATABASE_URL"
 echo "PORT: $PORT"
 echo "=========================="
@@ -27,8 +28,8 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 
-echo "Starting toolfront..."
-exec python -m toolfront "$DATABASE_URL" --transport sse --host 0.0.0.0 --port "${PORT:-10000}"
+echo "Running toolfront with uvx..."
+exec uvx --python python3.11 'toolfront[all]' "$DATABASE_URL" --transport sse --host 0.0.0.0 --port "${PORT:-10000}"
 EOF
 
 RUN chmod +x /app/start.sh
